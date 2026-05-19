@@ -412,7 +412,7 @@ if generate:
             </div>""", unsafe_allow_html=True)
 
             with client.messages.stream(
-                model="claude-sonnet-4-20250514",
+                model="claude-sonnet-4-5",
                 max_tokens=2500,
                 system="""You are a senior operating executive generating a Weekly Business Review for a leadership team. 
 Your job is NOT to summarize data — the data speaks for itself. Your job is to surface the decisions that need to be made, the risks that aren't yet on leadership's radar, and the questions that will drive better thinking in the room.
