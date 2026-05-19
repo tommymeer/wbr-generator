@@ -3,7 +3,7 @@ import pandas as pd
 import anthropic
 import json
 from datetime import datetime
-from analysis import compute_metrics, detect_anomalies, build_metric_narrative
+from analysis import compute_metrics, detect_anomalies, build_metric_narrative, suggest_mapping, apply_mapping, METRIC_LABELS
 from prompt import build_wbr_prompt
 
 st.set_page_config(
@@ -224,72 +224,113 @@ with left:
     st.markdown(
         '<div style="font-size:0.7rem; color:var(--muted); margin-top:0.5rem;">'
         'Upload any weekly business metrics CSV with a <strong>week</strong> column and numeric fields. '
-        'Common fields: revenue · pipeline · leads · customers · churn · burn rate · runway — '
-        'but the tool works with whatever you track.'
+        'Works with any column names — you\'ll confirm the mapping before generating.'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    # Known metric columns the app understands — anything else passes through as-is
-    KNOWN_COLS = [
-        "revenue", "pipeline_value", "new_leads", "qualified_leads",
-        "new_customers", "churned_customers", "expansion_revenue",
-        "activation_rate", "support_volume", "burn_rate", "runway_months"
-    ]
+    MAPPING_OPTIONS = ["— unmapped —"] + list(METRIC_LABELS.keys())
+    MAPPING_DISPLAY = {
+        "— unmapped —": "— unmapped —",
+        "revenue": "Revenue",
+        "pipeline_value": "Pipeline Value",
+        "new_leads": "New Leads",
+        "qualified_leads": "Qualified Leads",
+        "new_customers": "New Customers",
+        "churned_customers": "Churned Customers",
+        "expansion_revenue": "Expansion Revenue",
+        "activation_rate": "Activation Rate",
+        "support_volume": "Support Volume",
+        "burn_rate": "Burn Rate",
+        "runway_months": "Runway (months)",
+    }
 
     if uploaded_file:
         try:
-            df = pd.read_csv(uploaded_file)
+            raw_df = pd.read_csv(uploaded_file)
 
-            # Must have a week column and at least one numeric column
-            if "week" not in df.columns:
+            if "week" not in raw_df.columns:
                 st.error("CSV must include a 'week' column.")
-            elif df.select_dtypes(include="number").empty:
+            elif raw_df.select_dtypes(include="number").empty:
                 st.error("CSV must include at least one numeric column.")
             else:
-                st.session_state.df = df
+                numeric_cols = raw_df.select_dtypes(include="number").columns.tolist()
 
-                present_known = [c for c in KNOWN_COLS if c in df.columns]
-                absent_known = [c for c in KNOWN_COLS if c not in df.columns]
-                other_cols = [c for c in df.columns if c != "week" and c not in KNOWN_COLS]
-                st.session_state.present_cols = present_known
-                st.session_state.absent_cols = absent_known
-                st.session_state.other_cols = other_cols
+                # Only show mapping UI if columns don't already match schema
+                already_mapped = [c for c in numeric_cols if c in METRIC_LABELS]
+                needs_mapping = [c for c in numeric_cols if c not in METRIC_LABELS]
 
-                metrics = compute_metrics(df)
-                st.session_state.metrics_summary = metrics
-
-                # Sparsity note
-                weeks = len(df)
-                if weeks < 2:
-                    st.info("⚑ 1 week of data: no trend or anomaly analysis possible. Add more weeks for statistical signals.")
-                elif weeks < 4:
-                    st.info(f"⚑ {weeks} weeks of data: trend analysis is directional only. Anomaly detection activates at 4+ weeks.")
-
-                # Soft note on absent known columns
-                if absent_known:
+                if needs_mapping:
                     st.markdown(
-                        f'<div style="font-size:0.7rem; color:var(--muted); margin-top:0.4rem;">'
-                        f'Fields not in your CSV (review will work without them): '
-                        f'{" · ".join(absent_known)}</div>',
+                        '<div style="font-size:0.7rem; color:var(--muted); margin: 0.75rem 0 0.4rem;">'
+                        'Confirm what each column represents:</div>',
                         unsafe_allow_html=True,
                     )
 
-                st.markdown(
-                    f'<div style="margin-top:0.75rem; font-size:0.72rem; color:var(--muted);">'
-                    f'{weeks} week{"s" if weeks != 1 else ""} loaded · current week: {metrics["current_week"]}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    suggestions = suggest_mapping(needs_mapping)
+                    confirmed_mapping = {}
 
-                # Metric direction pills
-                pills_html = '<div class="metric-row">'
-                for m in metrics["directions"]:
-                    cls = "up" if m["dir"] == "up" else ("down" if m["dir"] == "down" else "flat")
-                    arrow = "↑" if m["dir"] == "up" else ("↓" if m["dir"] == "down" else "→")
-                    pills_html += f'<span class="metric-pill {cls}">{arrow} {m["label"]}</span>'
-                pills_html += '</div>'
-                st.markdown(pills_html, unsafe_allow_html=True)
+                    # Pass-through already-matched columns
+                    for col in already_mapped:
+                        confirmed_mapping[col] = col
+
+                    for col in needs_mapping:
+                        suggested = suggestions.get(col)
+                        default_idx = MAPPING_OPTIONS.index(suggested) if suggested in MAPPING_OPTIONS else 0
+                        chosen = st.selectbox(
+                            col,
+                            options=MAPPING_OPTIONS,
+                            format_func=lambda x: MAPPING_DISPLAY.get(x, x),
+                            index=default_idx,
+                            key=f"map_{col}",
+                        )
+                        confirmed_mapping[col] = chosen if chosen != "— unmapped —" else col
+
+                    if st.button("Confirm mapping", key="confirm_mapping"):
+                        st.session_state.confirmed_mapping = confirmed_mapping
+                        st.session_state.raw_df = raw_df
+                        st.rerun()
+                else:
+                    # All columns already match schema — skip mapping
+                    st.session_state.confirmed_mapping = {c: c for c in numeric_cols}
+                    st.session_state.raw_df = raw_df
+
+                # Once mapping confirmed, apply and compute
+                if "confirmed_mapping" in st.session_state and "raw_df" in st.session_state:
+                    df = apply_mapping(st.session_state.raw_df, st.session_state.confirmed_mapping)
+                    st.session_state.df = df
+
+                    metrics = compute_metrics(df)
+                    st.session_state.metrics_summary = metrics
+
+                    known_cols = metrics.get("known_cols", [])
+                    custom_cols = metrics.get("custom_cols", [])
+                    absent_known = [c for c in METRIC_LABELS if c not in df.columns]
+
+                    st.session_state.present_cols = known_cols
+                    st.session_state.absent_cols = absent_known
+                    st.session_state.other_cols = custom_cols
+
+                    weeks = len(df)
+                    if weeks < 2:
+                        st.info("⚑ 1 week of data: no trend or anomaly analysis possible.")
+                    elif weeks < 4:
+                        st.info(f"⚑ {weeks} weeks of data: trend analysis directional only. Anomaly detection activates at 4+ weeks.")
+
+                    st.markdown(
+                        f'<div style="margin-top:0.75rem; font-size:0.72rem; color:var(--muted);">'
+                        f'{weeks} week{"s" if weeks != 1 else ""} loaded · current week: {metrics["current_week"]}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    pills_html = '<div class="metric-row">'
+                    for m in metrics["directions"]:
+                        cls = "up" if m["dir"] == "up" else ("down" if m["dir"] == "down" else "flat")
+                        arrow = "↑" if m["dir"] == "up" else ("↓" if m["dir"] == "down" else "→")
+                        pills_html += f'<span class="metric-pill {cls}">{arrow} {m["label"]}</span>'
+                    pills_html += '</div>'
+                    st.markdown(pills_html, unsafe_allow_html=True)
 
         except Exception as e:
             st.error(f"Error reading CSV: {e}")
@@ -371,7 +412,7 @@ if generate:
             </div>""", unsafe_allow_html=True)
 
             with client.messages.stream(
-                model="claude-sonnet-4-5",
+                model="claude-sonnet-4-20250514",
                 max_tokens=2500,
                 system="""You are a senior operating executive generating a Weekly Business Review for a leadership team. 
 Your job is NOT to summarize data — the data speaks for itself. Your job is to surface the decisions that need to be made, the risks that aren't yet on leadership's radar, and the questions that will drive better thinking in the room.
