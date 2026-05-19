@@ -218,30 +218,71 @@ with left:
     uploaded_file = st.file_uploader(
         "Upload CSV",
         type=["csv"],
-        help="Required columns: week, revenue, pipeline_value, new_leads, qualified_leads, new_customers, churned_customers, expansion_revenue, activation_rate, support_volume, burn_rate, runway_months",
         label_visibility="collapsed",
     )
 
-    st.markdown('<div style="font-size:0.7rem; color:var(--muted); margin-top:0.5rem;">Required columns: week · revenue · pipeline_value · new_leads · qualified_leads · new_customers · churned_customers · expansion_revenue · activation_rate · support_volume · burn_rate · runway_months</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size:0.7rem; color:var(--muted); margin-top:0.5rem;">'
+        'Upload any weekly business metrics CSV with a <strong>week</strong> column and numeric fields. '
+        'Common fields: revenue · pipeline · leads · customers · churn · burn rate · runway — '
+        'but the tool works with whatever you track.'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Known metric columns the app understands — anything else passes through as-is
+    KNOWN_COLS = [
+        "revenue", "pipeline_value", "new_leads", "qualified_leads",
+        "new_customers", "churned_customers", "expansion_revenue",
+        "activation_rate", "support_volume", "burn_rate", "runway_months"
+    ]
 
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
-            st.session_state.df = df
-            required_cols = [
-                "week", "revenue", "pipeline_value", "new_leads", "qualified_leads",
-                "new_customers", "churned_customers", "expansion_revenue",
-                "activation_rate", "support_volume", "burn_rate", "runway_months"
-            ]
-            missing = [c for c in required_cols if c not in df.columns]
-            if missing:
-                st.error(f"Missing columns: {', '.join(missing)}")
+
+            # Must have a week column and at least one numeric column
+            if "week" not in df.columns:
+                st.error("CSV must include a 'week' column.")
+            elif df.select_dtypes(include="number").empty:
+                st.error("CSV must include at least one numeric column.")
             else:
+                st.session_state.df = df
+
+                present_known = [c for c in KNOWN_COLS if c in df.columns]
+                absent_known = [c for c in KNOWN_COLS if c not in df.columns]
+                other_cols = [c for c in df.columns if c != "week" and c not in KNOWN_COLS]
+                st.session_state.present_cols = present_known
+                st.session_state.absent_cols = absent_known
+                st.session_state.other_cols = other_cols
+
                 metrics = compute_metrics(df)
                 st.session_state.metrics_summary = metrics
-                st.markdown(f'<div style="margin-top:0.75rem; font-size:0.72rem; color:var(--muted);">{len(df)} weeks loaded · current week: {metrics["current_week"]}</div>', unsafe_allow_html=True)
 
-                # Show metric direction pills
+                # Sparsity note
+                weeks = len(df)
+                if weeks < 2:
+                    st.info("⚑ 1 week of data: no trend or anomaly analysis possible. Add more weeks for statistical signals.")
+                elif weeks < 4:
+                    st.info(f"⚑ {weeks} weeks of data: trend analysis is directional only. Anomaly detection activates at 4+ weeks.")
+
+                # Soft note on absent known columns
+                if absent_known:
+                    st.markdown(
+                        f'<div style="font-size:0.7rem; color:var(--muted); margin-top:0.4rem;">'
+                        f'Fields not in your CSV (review will work without them): '
+                        f'{" · ".join(absent_known)}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown(
+                    f'<div style="margin-top:0.75rem; font-size:0.72rem; color:var(--muted);">'
+                    f'{weeks} week{"s" if weeks != 1 else ""} loaded · current week: {metrics["current_week"]}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+                # Metric direction pills
                 pills_html = '<div class="metric-row">'
                 for m in metrics["directions"]:
                     cls = "up" if m["dir"] == "up" else ("down" if m["dir"] == "down" else "flat")
@@ -249,6 +290,7 @@ with left:
                     pills_html += f'<span class="metric-pill {cls}">{arrow} {m["label"]}</span>'
                 pills_html += '</div>'
                 st.markdown(pills_html, unsafe_allow_html=True)
+
         except Exception as e:
             st.error(f"Error reading CSV: {e}")
 
@@ -312,6 +354,9 @@ if generate:
             blockers=blockers,
             priorities=priorities,
             context=context,
+            present_cols=st.session_state.get("present_cols", []),
+            absent_cols=st.session_state.get("absent_cols", []),
+            other_cols=st.session_state.get("other_cols", []),
         )
 
         client = anthropic.Anthropic()
@@ -326,7 +371,7 @@ if generate:
             </div>""", unsafe_allow_html=True)
 
             with client.messages.stream(
-                model="claude-sonnet-4-5",
+                model="claude-sonnet-4-20250514",
                 max_tokens=2500,
                 system="""You are a senior operating executive generating a Weekly Business Review for a leadership team. 
 Your job is NOT to summarize data — the data speaks for itself. Your job is to surface the decisions that need to be made, the risks that aren't yet on leadership's radar, and the questions that will drive better thinking in the room.
