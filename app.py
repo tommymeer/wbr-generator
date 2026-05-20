@@ -213,8 +213,8 @@ with left:
     )
     st.markdown(
         '<div style="font-size:0.7rem; color:var(--muted); margin-top:0.5rem;">'
-        'Upload any weekly business metrics CSV with a date/time column '
-        '(e.g. <strong>week</strong>, <strong>week_ending</strong>, <strong>date</strong>, <strong>month</strong>) '
+        'Upload any weekly business metrics CSV with a date column '
+        '(e.g. <strong>week</strong>, <strong>week_ending</strong>) '
         'and numeric fields. Works with any column names — you\'ll confirm the mapping before generating.'
         '</div>',
         unsafe_allow_html=True,
