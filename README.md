@@ -75,7 +75,7 @@ Missing columns are surfaced as informational notes, not errors. The model is in
 
 ## CSV format
 
-Upload any weekly metrics CSV with a **week** column and numeric fields. The tool works with whatever you track — no fixed schema required. When you upload a CSV with non-standard column names, a mapping step appears that auto-suggests matches using fuzzy name matching (e.g. **revenue_mrr** → MRR, **churn_rate_pct** → Churn Rate, **cac_dollars** → CAC). You confirm or correct each mapping before generating. Columns left unmapped pass through as custom fields and are still analyzed for trends and anomalies — they just don't trigger the business logic heuristics that require knowing what a column represents.
+Upload any weekly metrics CSV with a date column (e.g. `week`, `week_ending`) and numeric fields. The tool works with whatever you track — no fixed schema required. When you upload a CSV with non-standard column names, a mapping step appears that auto-suggests matches using fuzzy name matching (e.g. **revenue_mrr** → MRR, **churn_rate_pct** → Churn Rate, **cac_dollars** → CAC). You confirm or correct each mapping before generating. Columns left unmapped pass through as custom fields and are still analyzed for trends and anomalies — they just don't trigger the business logic heuristics that require knowing what a column represents.
 
 Common fields it understands natively:
 
