@@ -190,21 +190,18 @@ if "metrics_summary" not in st.session_state:
     st.session_state.metrics_summary = None
 if "df" not in st.session_state:
     st.session_state.df = None
-
 # ── Week column detection ─────────────────────────────────────────────────────
 # Matches any column whose name contains one of these substrings (case-insensitive).
 # Covers: week, week_ending, week_end, week_start, weekly_date, report_week,
 #         date, dated, date_of, day, daily, month, monthly, quarter, quarterly,
 #         year, period, time, timestamp, etc.
 WEEK_SUBSTRINGS = ['week', 'date', 'day', 'month', 'quarter', 'year', 'period', 'time']
-
 def detect_week_column(columns):
     """Return the first column whose lowercased name contains a known time substring."""
     for col in columns:
         if any(sub in col.lower() for sub in WEEK_SUBSTRINGS):
             return col
     return None
-
 # ── Layout: two columns ───────────────────────────────────────────────────────
 left, right = st.columns([1, 1], gap="large")
 with left:
@@ -253,39 +250,35 @@ with left:
                 if week_col != 'week':
                     raw_df = raw_df.rename(columns={week_col: 'week'})
                 numeric_cols = raw_df.select_dtypes(include="number").columns.tolist()
-                # Only show mapping UI if columns don't already match schema
-                already_mapped = [c for c in numeric_cols if c in METRIC_LABELS]
-                needs_mapping = [c for c in numeric_cols if c not in METRIC_LABELS]
-                if needs_mapping:
-                    st.markdown(
-                        '<div style="font-size:0.7rem; color:var(--muted); margin: 0.75rem 0 0.4rem;">'
-                        'Confirm what each column represents:</div>',
-                        unsafe_allow_html=True,
+                # Show a dropdown for every numeric column.
+                # Pre-populate: exact schema match first, then fuzzy suggestion, then unmapped.
+                st.markdown(
+                    '<div style="font-size:0.7rem; color:var(--muted); margin: 0.75rem 0 0.4rem;">'
+                    'Confirm what each column represents:</div>',
+                    unsafe_allow_html=True,
+                )
+                suggestions = suggest_mapping(numeric_cols)
+                confirmed_mapping = {}
+                for col in numeric_cols:
+                    if col in METRIC_LABELS:
+                        default = col  # exact schema match — pre-select it
+                    elif suggestions.get(col) in MAPPING_OPTIONS:
+                        default = suggestions[col]  # fuzzy suggestion
+                    else:
+                        default = "— unmapped —"
+                    default_idx = MAPPING_OPTIONS.index(default) if default in MAPPING_OPTIONS else 0
+                    chosen = st.selectbox(
+                        col,
+                        options=MAPPING_OPTIONS,
+                        format_func=lambda x: MAPPING_DISPLAY.get(x, x),
+                        index=default_idx,
+                        key=f"map_{col}",
                     )
-                    suggestions = suggest_mapping(needs_mapping)
-                    confirmed_mapping = {}
-                    # Pass-through already-matched columns
-                    for col in already_mapped:
-                        confirmed_mapping[col] = col
-                    for col in needs_mapping:
-                        suggested = suggestions.get(col)
-                        default_idx = MAPPING_OPTIONS.index(suggested) if suggested in MAPPING_OPTIONS else 0
-                        chosen = st.selectbox(
-                            col,
-                            options=MAPPING_OPTIONS,
-                            format_func=lambda x: MAPPING_DISPLAY.get(x, x),
-                            index=default_idx,
-                            key=f"map_{col}",
-                        )
-                        confirmed_mapping[col] = chosen if chosen != "— unmapped —" else col
-                    if st.button("Confirm mapping", key="confirm_mapping"):
-                        st.session_state.confirmed_mapping = confirmed_mapping
-                        st.session_state.raw_df = raw_df
-                        st.rerun()
-                else:
-                    # All columns already match schema — skip mapping
-                    st.session_state.confirmed_mapping = {c: c for c in numeric_cols}
+                    confirmed_mapping[col] = chosen if chosen != "— unmapped —" else col
+                if st.button("Confirm mapping", key="confirm_mapping"):
+                    st.session_state.confirmed_mapping = confirmed_mapping
                     st.session_state.raw_df = raw_df
+                    st.rerun()
                 # Once mapping confirmed, apply and compute
                 if "confirmed_mapping" in st.session_state and "raw_df" in st.session_state:
                     df = apply_mapping(st.session_state.raw_df, st.session_state.confirmed_mapping)
