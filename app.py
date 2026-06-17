@@ -5,12 +5,14 @@ import json
 from datetime import datetime
 from analysis import compute_metrics, detect_anomalies, build_metric_narrative, suggest_mapping, apply_mapping, METRIC_LABELS
 from prompt import build_wbr_prompt
+
 st.set_page_config(
     page_title="Weekly Business Review",
     page_icon="⬛",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+
 # ── Styling ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -28,10 +30,8 @@ html, body, [class*="css"] {
     background-color: var(--paper);
     color: var(--ink);
 }
-/* Hide Streamlit chrome */
 #MainMenu, footer, header { visibility: hidden; }
 .block-container { padding: 2rem 3rem 4rem; max-width: 960px; margin: 0 auto; }
-/* Masthead */
 .masthead {
     border-top: 3px solid var(--ink);
     border-bottom: 1px solid var(--rule);
@@ -53,7 +53,6 @@ html, body, [class*="css"] {
     text-transform: uppercase;
     margin-top: 0.4rem;
 }
-/* Section headers */
 .section-label {
     font-size: 0.65rem;
     letter-spacing: 0.18em;
@@ -64,7 +63,6 @@ html, body, [class*="css"] {
     margin-bottom: 1rem;
     margin-top: 2rem;
 }
-/* Input fields */
 textarea, input[type="text"] {
     font-family: 'DM Mono', monospace !important;
     font-size: 0.82rem !important;
@@ -76,7 +74,6 @@ textarea:focus, input:focus {
     border-color: var(--ink) !important;
     box-shadow: none !important;
 }
-/* Metric pills */
 .metric-row {
     display: flex;
     gap: 0.5rem;
@@ -94,7 +91,6 @@ textarea:focus, input:focus {
 .metric-pill.up { border-color: #2d6a4f; color: #2d6a4f; background: #f0f7f4; }
 .metric-pill.down { border-color: var(--accent); color: var(--accent); background: #fdf4f2; }
 .metric-pill.flag { border-color: #b5651d; color: #b5651d; background: #fef9f5; }
-/* Generate button */
 .stButton > button {
     font-family: 'Syne', sans-serif !important;
     font-weight: 700 !important;
@@ -113,7 +109,6 @@ textarea:focus, input:focus {
     background: var(--accent) !important;
     color: #fff !important;
 }
-/* Output sections */
 .wbr-section {
     margin-bottom: 2rem;
     padding-bottom: 2rem;
@@ -141,7 +136,6 @@ textarea:focus, input:focus {
 .wbr-content ul { padding-left: 1.2rem; }
 .wbr-content li { margin-bottom: 0.4rem; }
 .wbr-content strong { color: var(--ink); font-weight: 500; }
-/* Confidence tag */
 .confidence-tag {
     display: inline-block;
     font-size: 0.62rem;
@@ -155,11 +149,8 @@ textarea:focus, input:focus {
 .confidence-tag.high { border-color: #2d6a4f; color: #2d6a4f; }
 .confidence-tag.medium { border-color: #b5651d; color: #b5651d; }
 .confidence-tag.low { border-color: var(--accent); color: var(--accent); }
-/* Upload area */
 .uploadedFile { border-radius: 0 !important; }
-/* Horizontal rule */
 hr { border: none; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
-/* Anomaly callout */
 .anomaly-box {
     border-left: 3px solid var(--accent);
     padding: 0.75rem 1rem;
@@ -168,7 +159,6 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
     font-size: 0.82rem;
     line-height: 1.6;
 }
-/* Streamlit file uploader */
 [data-testid="stFileUploader"] {
     border: 1px dashed var(--rule) !important;
     border-radius: 0 !important;
@@ -176,6 +166,7 @@ hr { border: none; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
 }
 </style>
 """, unsafe_allow_html=True)
+
 # ── Masthead ─────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="masthead">
@@ -183,6 +174,7 @@ st.markdown("""
     <div class="masthead-sub">Decision Intelligence System &nbsp;·&nbsp; Leadership Briefing</div>
 </div>
 """, unsafe_allow_html=True)
+
 # ── Session state ─────────────────────────────────────────────────────────────
 if "wbr_output" not in st.session_state:
     st.session_state.wbr_output = None
@@ -190,20 +182,19 @@ if "metrics_summary" not in st.session_state:
     st.session_state.metrics_summary = None
 if "df" not in st.session_state:
     st.session_state.df = None
+
 # ── Week column detection ─────────────────────────────────────────────────────
-# Matches any column whose name contains one of these substrings (case-insensitive).
-# Covers: week, week_ending, week_end, week_start, weekly_date, report_week,
-#         date, dated, date_of, day, daily, month, monthly, quarter, quarterly,
-#         year, period, time, timestamp, etc.
 WEEK_SUBSTRINGS = ['week', 'date', 'day', 'month', 'quarter', 'year', 'period', 'time']
+
 def detect_week_column(columns):
-    """Return the first column whose lowercased name contains a known time substring."""
     for col in columns:
         if any(sub in col.lower() for sub in WEEK_SUBSTRINGS):
             return col
     return None
-# ── Layout: two columns ───────────────────────────────────────────────────────
+
+# ── Layout ────────────────────────────────────────────────────────────────────
 left, right = st.columns([1, 1], gap="large")
+
 with left:
     st.markdown('<div class="section-label">01 — Metrics Data</div>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader(
@@ -219,6 +210,7 @@ with left:
         '</div>',
         unsafe_allow_html=True,
     )
+
     MAPPING_OPTIONS = ["— unmapped —"] + list(METRIC_LABELS.keys())
     MAPPING_DISPLAY = {
         "— unmapped —": "— unmapped —",
@@ -234,6 +226,7 @@ with left:
         "burn_rate": "Burn Rate",
         "runway_months": "Runway (months)",
     }
+
     if uploaded_file:
         try:
             raw_df = pd.read_csv(uploaded_file)
@@ -246,12 +239,9 @@ with left:
             elif raw_df.select_dtypes(include="number").empty:
                 st.error("CSV must include at least one numeric column.")
             else:
-                # Normalize the time column to 'week' so downstream logic is unchanged
                 if week_col != 'week':
                     raw_df = raw_df.rename(columns={week_col: 'week'})
                 numeric_cols = raw_df.select_dtypes(include="number").columns.tolist()
-                # Show a dropdown for every numeric column.
-                # Pre-populate: exact schema match first, then fuzzy suggestion, then unmapped.
                 st.markdown(
                     '<div style="font-size:0.7rem; color:var(--muted); margin: 0.75rem 0 0.4rem;">'
                     'Confirm what each column represents:</div>',
@@ -261,9 +251,9 @@ with left:
                 confirmed_mapping = {}
                 for col in numeric_cols:
                     if col in METRIC_LABELS:
-                        default = col  # exact schema match — pre-select it
+                        default = col
                     elif suggestions.get(col) in MAPPING_OPTIONS:
-                        default = suggestions[col]  # fuzzy suggestion
+                        default = suggestions[col]
                     else:
                         default = "— unmapped —"
                     default_idx = MAPPING_OPTIONS.index(default) if default in MAPPING_OPTIONS else 0
@@ -275,11 +265,12 @@ with left:
                         key=f"map_{col}",
                     )
                     confirmed_mapping[col] = chosen if chosen != "— unmapped —" else col
+
                 if st.button("Confirm mapping", key="confirm_mapping"):
                     st.session_state.confirmed_mapping = confirmed_mapping
                     st.session_state.raw_df = raw_df
                     st.rerun()
-                # Once mapping confirmed, apply and compute
+
                 if "confirmed_mapping" in st.session_state and "raw_df" in st.session_state:
                     df = apply_mapping(st.session_state.raw_df, st.session_state.confirmed_mapping)
                     st.session_state.df = df
@@ -311,6 +302,7 @@ with left:
                     st.markdown(pills_html, unsafe_allow_html=True)
         except Exception as e:
             st.error(f"Error reading CSV: {e}")
+
 with right:
     st.markdown('<div class="section-label">02 — Leadership Context</div>', unsafe_allow_html=True)
     wins = st.text_area(
@@ -341,11 +333,13 @@ with right:
         key="context",
         label_visibility="visible",
     )
+
 # ── Generate ──────────────────────────────────────────────────────────────────
 st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 col_btn, _ = st.columns([1, 2])
 with col_btn:
     generate = st.button("Generate Review →")
+
 if generate:
     if st.session_state.df is None:
         st.error("Upload a CSV first.")
@@ -367,18 +361,21 @@ if generate:
             absent_cols=st.session_state.get("absent_cols", []),
             other_cols=st.session_state.get("other_cols", []),
         )
+
         client = anthropic.Anthropic()
-        output_placeholder = st.empty()
         full_response = ""
+
         with st.spinner(""):
             st.markdown("""
             <div style="font-size:0.72rem; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin: 1rem 0 0.5rem;">
             Generating review...
             </div>""", unsafe_allow_html=True)
+
+            # ── CHANGE 1: max_tokens bumped from 2500 to 4000 ────────────────
             with client.messages.stream(
                 model="claude-sonnet-4-6",
-                max_tokens=2500,
-                system="""You are a senior operating executive generating a Weekly Business Review for a leadership team. 
+                max_tokens=4000,
+                system="""You are a senior operating executive generating a Weekly Business Review for a leadership team.
 Your job is NOT to summarize data — the data speaks for itself. Your job is to surface the decisions that need to be made, the risks that aren't yet on leadership's radar, and the questions that will drive better thinking in the room.
 Be specific. Be direct. Avoid hedging language that doesn't add information. When confidence is low due to limited data, say so explicitly.
 Output format: Return a JSON object with exactly these keys:
@@ -391,18 +388,28 @@ Output format: Return a JSON object with exactly these keys:
   "confidence_level": "high | medium | low",
   "confidence_note": "string — why is confidence at this level? What data is missing or ambiguous?"
 }
+
+LENGTH CONSTRAINTS (strictly enforced):
+- executive_summary: 3-4 sentences max
+- key_metric_changes: 5 items max, 2 sentences each
+- anomalies_and_risks: 4 items max, 2-3 sentences each
+- decisions_required: 4 items max, 2-3 sentences each
+- leadership_questions: 5 questions max, 1-2 sentences each
+- confidence_note: 2 sentences max
+
 Return only valid JSON. No markdown, no preamble.""",
                 messages=[{"role": "user", "content": prompt}],
             ) as stream:
                 for text in stream.text_stream:
                     full_response += text
+
             st.session_state.wbr_output = full_response
+
 # ── Render output ─────────────────────────────────────────────────────────────
 if st.session_state.wbr_output:
     try:
         data = json.loads(st.session_state.wbr_output)
     except json.JSONDecodeError:
-        # Attempt to extract JSON from possible wrapper
         import re
         match = re.search(r'\{.*\}', st.session_state.wbr_output, re.DOTALL)
         if match:
@@ -411,11 +418,12 @@ if st.session_state.wbr_output:
             st.error("Could not parse output. Raw response:")
             st.code(st.session_state.wbr_output)
             st.stop()
+
     st.markdown("---")
-    # Header bar
     now = datetime.now()
     confidence = data.get("confidence_level", "medium")
     conf_class = "high" if confidence == "high" else ("low" if confidence == "low" else "medium")
+
     st.markdown(f"""
     <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:1.5rem;">
         <div>
@@ -429,16 +437,17 @@ if st.session_state.wbr_output:
         <div class="confidence-tag {conf_class}">Signal confidence: {confidence}</div>
     </div>
     """, unsafe_allow_html=True)
+
     if data.get("confidence_note"):
         st.markdown(f'<div style="font-size:0.75rem; color:var(--muted); font-style:italic; margin-bottom:1.5rem; padding:0.5rem 0.75rem; border:1px dashed var(--rule);">⚑ {data["confidence_note"]}</div>', unsafe_allow_html=True)
-    # Section 1: Executive Summary
+
     st.markdown("""
     <div class="wbr-section">
         <div class="wbr-section-title"><span class="wbr-section-number">I.</span>Executive Summary</div>
     """, unsafe_allow_html=True)
     st.markdown(f'<div class="wbr-content"><p>{data.get("executive_summary", "")}</p></div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Section 2: Key Metric Changes
+
     st.markdown("""
     <div class="wbr-section">
         <div class="wbr-section-title"><span class="wbr-section-number">II.</span>Key Metric Changes</div>
@@ -449,7 +458,7 @@ if st.session_state.wbr_output:
     items_html += "</ul>"
     st.markdown(f'<div class="wbr-content">{items_html}</div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Section 3: Anomalies and Risks
+
     st.markdown("""
     <div class="wbr-section">
         <div class="wbr-section-title"><span class="wbr-section-number">III.</span>Anomalies & Risks</div>
@@ -457,7 +466,7 @@ if st.session_state.wbr_output:
     for item in data.get("anomalies_and_risks", []):
         st.markdown(f'<div class="anomaly-box">{item}</div>', unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Section 4: Decisions Required
+
     st.markdown("""
     <div class="wbr-section">
         <div class="wbr-section-title"><span class="wbr-section-number">IV.</span>Decisions Required</div>
@@ -470,7 +479,7 @@ if st.session_state.wbr_output:
         </div>
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Section 5: Leadership Questions
+
     st.markdown("""
     <div class="wbr-section" style="border-bottom:none;">
         <div class="wbr-section-title"><span class="wbr-section-number">V.</span>Questions Leadership Should Discuss This Week</div>
@@ -483,19 +492,24 @@ if st.session_state.wbr_output:
         </div>
         """, unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-    # Export
+
     st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
     export_text = f"""WEEKLY BUSINESS REVIEW — {now.strftime('%B %d, %Y')}
 Signal Confidence: {confidence}
 {data.get('confidence_note', '')}
+
 I. EXECUTIVE SUMMARY
 {data.get('executive_summary', '')}
+
 II. KEY METRIC CHANGES
 {chr(10).join(['• ' + m for m in data.get('key_metric_changes', [])])}
+
 III. ANOMALIES & RISKS
 {chr(10).join(['• ' + r for r in data.get('anomalies_and_risks', [])])}
+
 IV. DECISIONS REQUIRED
 {chr(10).join([f'{i+1:02d}. ' + d for i, d in enumerate(data.get('decisions_required', []))])}
+
 V. LEADERSHIP QUESTIONS
 {chr(10).join([f'Q{i+1}: ' + q for i, q in enumerate(data.get('leadership_questions', []))])}
 """
